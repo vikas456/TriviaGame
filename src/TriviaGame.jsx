@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Play, SkipForward, Trophy, Plus, Trash2, CheckCircle, Circle, RotateCcw, X } from 'lucide-react';
-import './firebase';
+import { Users, Play, SkipForward, Trophy, Plus, Trash2, CheckCircle, Circle, RotateCcw, X, Edit2, Save } from 'lucide-react';
+import { storage } from './firebase';
 
 const TriviaGame = () => {
+  useEffect(() => {
+    if (!window.storage) {
+      console.error('Storage not initialized!');
+      alert('Storage not initialized. Please refresh the page.');
+    } else {
+      console.log('Storage is ready');
+    }
+  }, []);
+
   const [view, setView] = useState('home'); // home, admin, player, setup
   const [gameCode, setGameCode] = useState('');
   const [teamName, setTeamName] = useState('');
@@ -10,6 +19,8 @@ const TriviaGame = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const [teamToRemove, setTeamToRemove] = useState(null);
+  const [isEditingQuestions, setIsEditingQuestions] = useState(false);
+  const [editedRounds, setEditedRounds] = useState([]);
 
   // Setup state
   const [setupData, setSetupData] = useState({
@@ -186,6 +197,72 @@ const TriviaGame = () => {
     } catch (error) {
       alert('Error removing team: ' + error.message);
     }
+  };
+
+  // Start editing questions
+  const startEditingQuestions = () => {
+    setEditedRounds(JSON.parse(JSON.stringify(gameState.rounds))); // Deep copy
+    setIsEditingQuestions(true);
+  };
+
+  // Save edited questions
+  const saveEditedQuestions = async () => {
+    const updated = {
+      ...gameState,
+      rounds: editedRounds
+    };
+
+    try {
+      await window.storage.set(`game:${gameCode}`, JSON.stringify(updated), true);
+      setGameState(updated);
+      setIsEditingQuestions(false);
+      alert('Questions updated successfully!');
+    } catch (error) {
+      alert('Error saving questions: ' + error.message);
+    }
+  };
+
+  // Update edited round
+  const updateEditedRound = (roundIndex, field, value) => {
+    const newRounds = [...editedRounds];
+    newRounds[roundIndex][field] = value;
+    setEditedRounds(newRounds);
+  };
+
+  // Update edited question
+  const updateEditedQuestion = (roundIndex, questionIndex, field, value) => {
+    const newRounds = [...editedRounds];
+    newRounds[roundIndex].questions[questionIndex][field] = value;
+    setEditedRounds(newRounds);
+  };
+
+  // Add question to edited round
+  const addEditedQuestion = (roundIndex) => {
+    const newRounds = [...editedRounds];
+    newRounds[roundIndex].questions.push({ question: '', answer: '', points: 10 });
+    setEditedRounds(newRounds);
+  };
+
+  // Delete question from edited round
+  const deleteEditedQuestion = (roundIndex, questionIndex) => {
+    const newRounds = [...editedRounds];
+    newRounds[roundIndex].questions = newRounds[roundIndex].questions.filter((_, i) => i !== questionIndex);
+    setEditedRounds(newRounds);
+  };
+
+  // Add round to edited rounds
+  const addEditedRound = () => {
+    setEditedRounds([...editedRounds, {
+      name: `Round ${editedRounds.length + 1}`,
+      theme: '',
+      questions: [{ question: '', answer: '', points: 10 }]
+    }]);
+  };
+
+  // Delete edited round
+  const deleteEditedRound = (roundIndex) => {
+    const newRounds = editedRounds.filter((_, i) => i !== roundIndex);
+    setEditedRounds(newRounds);
   };
 
   // Submit answers for entire round
@@ -626,13 +703,22 @@ const TriviaGame = () => {
                     Start Round {gameState.currentRound + 1}
                   </button>
                   {gameState.currentRound === 0 && (
-                    <button
-                      onClick={() => setShowRestartConfirm(true)}
-                      className="bg-gray-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold hover:bg-gray-700 transition flex items-center justify-center gap-2 text-sm sm:text-base"
-                    >
-                      <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
-                      Restart Game
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setShowRestartConfirm(true)}
+                        className="bg-gray-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold hover:bg-gray-700 transition flex items-center justify-center gap-2 text-sm sm:text-base"
+                      >
+                        <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
+                        Restart Game
+                      </button>
+                      <button
+                        onClick={startEditingQuestions}
+                        className="bg-blue-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2 text-sm sm:text-base"
+                      >
+                        <Edit2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                        Edit Questions
+                      </button>
+                    </>
                   )}
                 </>
               )}
@@ -667,6 +753,124 @@ const TriviaGame = () => {
               </span>
             </div>
           </div>
+
+          {/* Edit Questions Modal */}
+          {isEditingQuestions && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+              <div className="bg-white rounded-xl shadow-2xl p-4 sm:p-6 max-w-4xl w-full my-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Edit Questions</h3>
+                  <button
+                    onClick={() => setIsEditingQuestions(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="max-h-[60vh] overflow-y-auto mb-4">
+                  {editedRounds.map((round, roundIndex) => (
+                    <div key={roundIndex} className="border border-gray-200 rounded-lg p-3 sm:p-4 mb-3 sm:mb-4">
+                      <div className="flex items-center justify-between mb-3 sm:mb-4">
+                        <input
+                          type="text"
+                          value={round.name}
+                          onChange={(e) => updateEditedRound(roundIndex, 'name', e.target.value)}
+                          className="text-lg sm:text-xl font-semibold border-b border-gray-300 focus:border-purple-500 outline-none flex-1 mr-2"
+                        />
+                        <button
+                          onClick={() => deleteEditedRound(roundIndex)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                      </div>
+
+                      <div className="mb-3 sm:mb-4">
+                        <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                          Theme (optional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g., 80s Movies, World Geography"
+                          value={round.theme}
+                          onChange={(e) => updateEditedRound(roundIndex, 'theme', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm sm:text-base"
+                        />
+                      </div>
+
+                      {round.questions.map((q, qIndex) => (
+                        <div key={qIndex} className="bg-gray-50 rounded-lg p-2 sm:p-3 mb-2 sm:mb-3">
+                          <div className="flex items-start justify-between mb-2">
+                            <span className="text-xs sm:text-sm font-medium text-gray-700">Q{qIndex + 1}</span>
+                            <button
+                              onClick={() => deleteEditedQuestion(roundIndex, qIndex)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Question"
+                            value={q.question}
+                            onChange={(e) => updateEditedQuestion(roundIndex, qIndex, 'question', e.target.value)}
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg mb-2 text-sm sm:text-base"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Answer"
+                            value={q.answer}
+                            onChange={(e) => updateEditedQuestion(roundIndex, qIndex, 'answer', e.target.value)}
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg mb-2 text-sm sm:text-base"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Points"
+                            value={q.points}
+                            onChange={(e) => updateEditedQuestion(roundIndex, qIndex, 'points', parseInt(e.target.value))}
+                            className="w-20 sm:w-24 px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-sm sm:text-base"
+                          />
+                        </div>
+                      ))}
+
+                      <button
+                        onClick={() => addEditedQuestion(roundIndex)}
+                        className="text-purple-600 hover:text-purple-800 text-xs sm:text-sm font-medium flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+                        Add Question
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={addEditedRound}
+                    className="w-full border-2 border-dashed border-gray-300 rounded-lg py-2 sm:py-3 text-gray-600 hover:border-purple-500 hover:text-purple-600 transition flex items-center justify-center gap-2 text-sm sm:text-base"
+                  >
+                    <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Add Round
+                  </button>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setIsEditingQuestions(false)}
+                    className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveEditedQuestions}
+                    className="flex-1 bg-purple-600 text-white py-3 rounded-lg font-semibold hover:bg-purple-700 transition flex items-center justify-center gap-2"
+                  >
+                    <Save className="w-5 h-5" />
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Team Submission Status */}
           {gameState.status === 'active' && (
