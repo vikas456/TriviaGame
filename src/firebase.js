@@ -13,12 +13,12 @@ import {
 
 // Replace with YOUR Firebase config from Step 1
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyAArgmb5PcBXvBtf-jixyja2kf6BBLu858",
+  authDomain: "trivia-game-5e95f.firebaseapp.com",
+  projectId: "trivia-game-5e95f",
+  storageBucket: "trivia-game-5e95f.firebasestorage.app",
+  messagingSenderId: "856348571076",
+  appId: "1:856348571076:web:af3f1211bcf5c71ca9e091",
 };
 
 // Initialize Firebase
