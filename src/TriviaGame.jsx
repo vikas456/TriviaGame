@@ -1,26 +1,112 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Play, SkipForward, Trophy, Plus, Trash2, CheckCircle, Circle, RotateCcw, X, Edit2, Save } from 'lucide-react';
-import { storage } from './firebase';
+import './firebase';
 
 const TriviaGame = () => {
+  // Check if storage is initialized
+  const [storageReady, setStorageReady] = useState(false);
+
   useEffect(() => {
-    if (!window.storage) {
-      console.error('Storage not initialized!');
-      alert('Storage not initialized. Please refresh the page.');
-    } else {
-      console.log('Storage is ready');
-    }
+    // Wait for storage to be ready
+    const checkStorage = () => {
+      if (window.storage) {
+        console.log('Storage is ready');
+        setStorageReady(true);
+      } else {
+        console.log('Waiting for storage...');
+        setTimeout(checkStorage, 100);
+      }
+    };
+    checkStorage();
   }, []);
 
+  // Parse URL parameters on mount
+  const getUrlParams = () => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      code: params.get('code') || '',
+      team: params.get('team') || '',
+      role: params.get('role') || '' // 'admin' or 'player'
+    };
+  };
+
+  const urlParams = getUrlParams();
+  
   const [view, setView] = useState('home'); // home, admin, player, setup
-  const [gameCode, setGameCode] = useState('');
-  const [teamName, setTeamName] = useState('');
+  const [gameCode, setGameCode] = useState(urlParams.code);
+  const [teamName, setTeamName] = useState(urlParams.team);
   const [gameState, setGameState] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const [teamToRemove, setTeamToRemove] = useState(null);
   const [isEditingQuestions, setIsEditingQuestions] = useState(false);
   const [editedRounds, setEditedRounds] = useState([]);
+
+  // Auto-join on mount if URL has params
+  useEffect(() => {
+    if (!storageReady) return;
+    
+    const autoJoin = async () => {
+      if (urlParams.code && urlParams.role) {
+        console.log('Auto-joining from URL:', urlParams);
+        
+        if (urlParams.role === 'admin') {
+          // Join as admin
+          try {
+            setIsLoading(true);
+            const result = await window.storage.get(`game:${urlParams.code}`, true);
+            if (result) {
+              const game = JSON.parse(result.value);
+              setGameState(game);
+              setView('admin');
+            } else {
+              console.error('Game not found');
+              // Clear invalid URL params
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          } catch (error) {
+            console.error('Error auto-joining as admin:', error);
+            window.history.replaceState({}, '', window.location.pathname);
+          } finally {
+            setIsLoading(false);
+          }
+        } else if (urlParams.role === 'player' && urlParams.team) {
+          // Join as player
+          try {
+            setIsLoading(true);
+            const result = await window.storage.get(`game:${urlParams.code}`, true);
+            if (result) {
+              const game = JSON.parse(result.value);
+              
+              // Add team if it doesn't exist
+              if (!game.teams[urlParams.team]) {
+                game.teams[urlParams.team] = {
+                  name: urlParams.team,
+                  scores: new Array(game.rounds.length).fill(0),
+                  answers: {},
+                  totalScore: 0
+                };
+                await window.storage.set(`game:${urlParams.code}`, JSON.stringify(game), true);
+              }
+              
+              setGameState(game);
+              setView('player');
+            } else {
+              console.error('Game not found');
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          } catch (error) {
+            console.error('Error auto-joining as player:', error);
+            window.history.replaceState({}, '', window.location.pathname);
+          } finally {
+            setIsLoading(false);
+          }
+        }
+      }
+    };
+
+    autoJoin();
+  }, [storageReady]);
 
   // Setup state
   const [setupData, setSetupData] = useState({
@@ -43,6 +129,11 @@ const TriviaGame = () => {
 
   // Create new game
   const createGame = async () => {
+    if (!window.storage) {
+      alert('Storage not ready. Please wait a moment and try again.');
+      return;
+    }
+
     const code = generateGameCode();
     const newGame = {
       code,
@@ -59,9 +150,14 @@ const TriviaGame = () => {
       await window.storage.set(`game:${code}`, JSON.stringify(newGame), true);
       setGameCode(code);
       setGameState(newGame);
+      
+      // Update URL
+      window.history.pushState({}, '', `?code=${code}&role=admin`);
+      
       setView('admin');
     } catch (error) {
       alert('Error creating game: ' + error.message);
+      console.error('Create game error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -108,6 +204,10 @@ const TriviaGame = () => {
       
       setGameCode(upperGameCode);
       setGameState(game);
+      
+      // Update URL
+      window.history.pushState({}, '', `?code=${upperGameCode}&team=${encodeURIComponent(teamName)}&role=player`);
+      
       console.log('Setting view to player');
       setView('player');
     } catch (error) {
@@ -416,6 +516,18 @@ const TriviaGame = () => {
 
   // HOME VIEW
   if (view === 'home') {
+    // Show loading while storage initializes
+    if (!storageReady) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Initializing...</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
@@ -485,6 +597,10 @@ const TriviaGame = () => {
                     const game = JSON.parse(result.value);
                     setGameCode(upperGameCode);
                     setGameState(game);
+                    
+                    // Update URL
+                    window.history.pushState({}, '', `?code=${upperGameCode}&role=admin`);
+                    
                     setView('admin');
                   } catch (error) {
                     alert('Error loading game: ' + error.message);
